@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const URL = "http://localhost:3000";
 
@@ -15,54 +16,142 @@ export default function Room({
   localAudioTrack: MediaStreamTrack | null;
   localVideoTrack: MediaStreamTrack | null;
 }) {
+  const router = useRouter();
+
   const [lobby, setLobby] = useState(true);
+  const [status, setStatus] = useState<string>("Waiting to connect you to someone…");
 
   // DOM refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
-  // socket/pc refs (so we don't reconnect in StrictMode)
+  // socket/pc refs
   const socketRef = useRef<Socket | null>(null);
-  const sendingPcRef = useRef<RTCPeerConnection | null>(null);    // caller
-  const receivingPcRef = useRef<RTCPeerConnection | null>(null);  // answerer
+  const sendingPcRef = useRef<RTCPeerConnection | null>(null);
+  const receivingPcRef = useRef<RTCPeerConnection | null>(null);
   const joinedRef = useRef(false);
 
   // persistent remote stream
   const remoteStreamRef = useRef<MediaStream | null>(null);
 
-  // helper: ensure remote stream exists + is bound to <video>
+  // --- Helpers --------------------------------------------------------------
+
+  // Bind/create remote stream to <video>/<audio>
   function ensureRemoteStream() {
     if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream();
-    const el = remoteVideoRef.current;
-    if (el && el.srcObject !== remoteStreamRef.current) {
-      el.srcObject = remoteStreamRef.current;
-      el.playsInline = true;
-      el.muted = true; // start muted to satisfy autoplay policies
-      el.play().catch(() => {});
+
+    const v = remoteVideoRef.current;
+    if (v && v.srcObject !== remoteStreamRef.current) {
+      v.srcObject = remoteStreamRef.current;
+      v.playsInline = true;
+      v.play().catch(() => {});
+    }
+
+    const a = remoteAudioRef.current;
+    if (a && a.srcObject !== remoteStreamRef.current) {
+      a.srcObject = remoteStreamRef.current;
+      a.autoplay = true;
+      a.muted = false;
+      a.play().catch(() => {});
     }
   }
 
-  // bind remote stream when lobby flips or element mounts
+  // Detach the preview element’s own stream (do NOT stop the prop tracks here)
+  function detachLocalPreview() {
+    try {
+      const localStream = localVideoRef.current?.srcObject as MediaStream | null;
+      localStream?.getTracks().forEach((t) => {
+        try { t.stop(); } catch {}
+      });
+    } catch {}
+    if (localVideoRef.current) {
+      try { localVideoRef.current.pause(); } catch {}
+      localVideoRef.current.srcObject = null;
+    }
+  }
+
+  // Stop the tracks we were given from the parent — call ONLY on explicit Leave
+  function stopProvidedTracks() {
+    try { localVideoTrack?.stop(); } catch {}
+    try { localAudioTrack?.stop(); } catch {}
+  }
+
+  // Close PCs and clear ONLY remote media
+  function teardownPeers(reason = "teardown") {
+    try {
+      if (sendingPcRef.current) {
+        try {
+          sendingPcRef.current.getSenders().forEach((sn) => {
+            try { sendingPcRef.current?.removeTrack(sn); } catch {}
+          });
+        } catch {}
+        sendingPcRef.current.close();
+      }
+      if (receivingPcRef.current) {
+        try {
+          receivingPcRef.current.getSenders().forEach((sn) => {
+            try { receivingPcRef.current?.removeTrack(sn); } catch {}
+          });
+        } catch {}
+        receivingPcRef.current.close();
+      }
+    } catch {}
+    sendingPcRef.current = null;
+    receivingPcRef.current = null;
+
+    if (remoteStreamRef.current) {
+      try { remoteStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+    }
+    remoteStreamRef.current = null;
+
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+
+    setLobby(true);
+    if (reason === "partner-left") {
+      setStatus("Partner left. Finding a new match…");
+    } else if (reason === "next") {
+      setStatus("Searching for your next match…");
+    } else {
+      setStatus("Waiting to connect you to someone…");
+    }
+  }
+
+  // --- Effects --------------------------------------------------------------
+
+  // Bind remote when leaving lobby
   useEffect(() => {
     if (!lobby) ensureRemoteStream();
   }, [lobby]);
 
-  // local preview
+  // Local preview: attach once tracks exist; retry play on first click (autoplay)
   useEffect(() => {
-    if (localVideoRef.current && localVideoTrack) {
-      const stream = new MediaStream([
-        localVideoTrack,
-        ...(localAudioTrack ? [localAudioTrack] : []),
-      ]);
-      localVideoRef.current.srcObject = stream;
-      localVideoRef.current.muted = true;
-      localVideoRef.current.playsInline = true;
-      localVideoRef.current.play().catch(() => {});
-    }
+    const el = localVideoRef.current;
+    if (!el) return;
+    if (!localVideoTrack && !localAudioTrack) return;
+
+    const stream = new MediaStream([
+      ...(localVideoTrack ? [localVideoTrack] : []),
+      ...(localAudioTrack ? [localAudioTrack] : []),
+    ]);
+
+    el.srcObject = stream;
+    el.muted = true;      // required for autoplay policies
+    el.playsInline = true;
+
+    const tryPlay = () => el.play().catch(() => {});
+    tryPlay();
+
+    const onceClick = () => { tryPlay(); window.removeEventListener("click", onceClick); };
+    window.addEventListener("click", onceClick, { once: true });
+
+    return () => window.removeEventListener("click", onceClick);
   }, [localAudioTrack, localVideoTrack]);
 
+  // Socket / WebRTC wiring
   useEffect(() => {
-    if (socketRef.current) return; // prevent duplicate connections
+    if (socketRef.current) return;
 
     const s = io(URL, {
       transports: ["websocket"],
@@ -75,44 +164,35 @@ export default function Room({
     s.connect();
 
     s.on("connect", () => {
-      // If you need to notify server you joined, do it once
       if (!joinedRef.current) {
-        // s.emit("join-room", { name })
+        // s.emit("join-room", { name });
         joinedRef.current = true;
       }
     });
 
-    // ========== CALLER ==========
+    // ----- CALLER -----
     s.on("send-offer", async ({ roomId }) => {
       setLobby(false);
+      setStatus("Connecting…");
 
       const pc = new RTCPeerConnection();
       sendingPcRef.current = pc;
 
-      // add local media
-      if (localVideoTrack) pc.addTrack(localVideoTrack);
-      if (localAudioTrack) pc.addTrack(localAudioTrack);
+      // only add live tracks
+      if (localVideoTrack && localVideoTrack.readyState === "live") pc.addTrack(localVideoTrack);
+      if (localAudioTrack && localAudioTrack.readyState === "live") pc.addTrack(localAudioTrack);
 
-      // caller MUST attach remote tracks
       ensureRemoteStream();
       pc.ontrack = (e) => {
-        console.log("[caller] remote track:", e.track.kind);
         remoteStreamRef.current!.addTrack(e.track);
       };
 
       pc.onicecandidate = (e) => {
         if (e.candidate) {
-          s.emit("add-ice-candidate", {
-            candidate: e.candidate,
-            type: "sender",
-            roomId,
-          });
+          s.emit("add-ice-candidate", { candidate: e.candidate, type: "sender", roomId });
         }
       };
-      pc.oniceconnectionstatechange = () =>
-        console.log("[caller] ICE:", pc.iceConnectionState);
 
-      // create + send offer
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
@@ -121,36 +201,29 @@ export default function Room({
       s.emit("offer", { sdp: offer, roomId });
     });
 
-    // ========== ANSWERER ==========
+    // ----- ANSWERER -----
     s.on("offer", async ({ roomId, sdp: remoteSdp }) => {
       setLobby(false);
+      setStatus("Connecting…");
 
       const pc = new RTCPeerConnection();
       receivingPcRef.current = pc;
 
-      // add local media (answerer must send its media too)
-      if (localVideoTrack) pc.addTrack(localVideoTrack);
-      if (localAudioTrack) pc.addTrack(localAudioTrack);
+      if (localVideoTrack && localVideoTrack.readyState === "live") pc.addTrack(localVideoTrack);
+      if (localAudioTrack && localAudioTrack.readyState === "live") pc.addTrack(localAudioTrack);
 
       await pc.setRemoteDescription(new RTCSessionDescription(remoteSdp));
 
       ensureRemoteStream();
       pc.ontrack = (e) => {
-        console.log("[answerer] remote track:", e.track.kind);
         remoteStreamRef.current!.addTrack(e.track);
       };
 
       pc.onicecandidate = (e) => {
         if (e.candidate) {
-          s.emit("add-ice-candidate", {
-            candidate: e.candidate,
-            type: "receiver",
-            roomId,
-          });
+          s.emit("add-ice-candidate", { candidate: e.candidate, type: "receiver", roomId });
         }
       };
-      pc.oniceconnectionstatechange = () =>
-        console.log("[answerer] ICE:", pc.iceConnectionState);
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -164,15 +237,13 @@ export default function Room({
       await pc.setRemoteDescription(new RTCSessionDescription(remoteSdp));
     });
 
-    // trickle ICE both ways
+    // trickle ICE
     s.on("add-ice-candidate", async ({ candidate, type }) => {
       try {
         const ice = new RTCIceCandidate(candidate);
         if (type === "sender") {
-          // to caller from answerer
           await receivingPcRef.current?.addIceCandidate(ice);
         } else {
-          // to answerer from caller
           await sendingPcRef.current?.addIceCandidate(ice);
         }
       } catch (e) {
@@ -180,30 +251,89 @@ export default function Room({
       }
     });
 
-    // optional: lobby reset
-    s.on("lobby", () => setLobby(true));
+    // lobby / searching
+    s.on("lobby", () => {
+      setLobby(true);
+      setStatus("Waiting to connect you to someone…");
+    });
+    s.on("queue:waiting", () => {
+      setLobby(true);
+      setStatus("Searching for the best match…");
+    });
+
+    // partner left
+    s.on("partner:left", () => {
+      teardownPeers("partner-left");
+    });
+
+    // ensure we leave queue and stop devices on real tab close
+    const onBeforeUnload = () => {
+      try { s.emit("queue:leave"); } catch {}
+      // User is actually leaving the page: stop real devices
+      stopProvidedTracks();
+      detachLocalPreview();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
 
     return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+
       s.off("connect");
       s.off("send-offer");
       s.off("offer");
       s.off("answer");
       s.off("add-ice-candidate");
       s.off("lobby");
+      s.off("queue:waiting");
+      s.off("partner:left");
+      try { s.emit("queue:leave"); } catch {}
       s.disconnect();
       socketRef.current = null;
 
-      try {
-        sendingPcRef.current?.getSenders().forEach((sn) => sn.track?.stop());
-        receivingPcRef.current?.getSenders().forEach((sn) => sn.track?.stop());
-        sendingPcRef.current?.close();
-        receivingPcRef.current?.close();
-      } catch {}
+      // Close PCs & clear remote only; keep local devices alive in dev
+      try { sendingPcRef.current?.close(); } catch {}
+      try { receivingPcRef.current?.close(); } catch {}
       sendingPcRef.current = null;
       receivingPcRef.current = null;
+
+      if (remoteStreamRef.current) {
+        try { remoteStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+      }
       remoteStreamRef.current = null;
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+
+      // IMPORTANT: Do NOT stop the provided tracks here — Strict Mode double-mount would kill them.
+      // Only detach the preview element to avoid leaks.
+      detachLocalPreview();
     };
   }, [name, localAudioTrack, localVideoTrack]);
+
+  // --- Actions --------------------------------------------------------------
+
+  const handleNext = () => {
+    const s = socketRef.current;
+    if (!s) return;
+    s.emit("queue:next");
+    teardownPeers("next"); // keep local devices alive for fast rematch
+  };
+
+  const handleLeave = () => {
+    const s = socketRef.current;
+    try { s?.emit("queue:leave"); } catch {}
+    teardownPeers("teardown");
+    // Explicit user intent to leave → actually turn off camera & mic
+    stopProvidedTracks();
+    detachLocalPreview();
+    router.push("/");
+  };
+
+  const handleRecheck = () => {
+    setLobby(true);
+    setStatus("Rechecking…");
+  };
+
+  // --- UI -------------------------------------------------------------------
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-950 text-white">
@@ -252,7 +382,7 @@ export default function Room({
               {lobby ? (
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-white/60" />
-                  <span className="text-sm text-white/60">Waiting to connect you to someone…</span>
+                  <span className="text-sm text-white/60">{status}</span>
                 </div>
               ) : (
                 <video
@@ -265,6 +395,8 @@ export default function Room({
               <div className="absolute bottom-3 left-3 text-xs bg-black/60 px-2 py-1 rounded-md">
                 {lobby ? "—" : "Connected"}
               </div>
+              {/* hidden remote audio sink so we can hear the peer */}
+              <audio ref={remoteAudioRef} style={{ display: "none" }} />
             </div>
           </div>
         </div>
@@ -276,18 +408,28 @@ export default function Room({
           <span className="mr-auto text-xs text-white/60">
             Tip: keep this tab active while matching.
           </span>
+
           <button
             className="h-10 rounded-xl border border-white/15 bg-white/[0.04] px-4 text-sm hover:bg-white/[0.08] transition"
-            onClick={() => window.location.reload()}
+            onClick={handleRecheck}
           >
             Recheck
           </button>
-          <a
-            href="/"
+
+          <button
+            className="h-10 rounded-xl border border-white/15 bg-white/[0.04] px-4 text-sm hover:bg-white/[0.08] transition"
+            onClick={handleNext}
+            title="Skip current partner and find another"
+          >
+            Next
+          </button>
+
+          <button
             className="h-10 rounded-xl bg-red-600 hover:bg-red-500 px-4 text-sm font-medium transition"
+            onClick={handleLeave}
           >
             Leave
-          </a>
+          </button>
         </div>
       </footer>
     </div>

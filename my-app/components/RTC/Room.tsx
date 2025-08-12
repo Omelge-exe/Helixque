@@ -5,7 +5,7 @@ import { io, Socket } from "socket.io-client";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-const URL = "http://localhost:3000";
+const URL = "https://poc-v2-19ly.vercel.app/";
 
 export default function Room({
   name,

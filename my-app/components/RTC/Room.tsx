@@ -5,7 +5,7 @@ import { io, Socket } from "socket.io-client";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-const URL = "https://poc-v2-19ly.vercel.app/";
+const URL = "https://poc-v2.onrender.com";
 // const URL="http://localhost:3000"
 
 export default function Room({

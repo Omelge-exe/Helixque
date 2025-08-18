@@ -5,8 +5,8 @@ import { io, Socket } from "socket.io-client";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-const URL = process.env.BACKEND_URI;
-// const URL="http://localhost:3000"
+// const URL = process.env.BACKEND_URI;
+const URL="http://localhost:3000"
 
 export default function Room({
   name,

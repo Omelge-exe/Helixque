@@ -2,11 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { Loader2 } from "lucide-react";
+import {
+  Loader2,
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  MessageSquareText,
+  PhoneOff,
+  SkipForward,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
+import ChatPanel from "./Chat/chat"; // ← adjust path if different
 
 // const URL = process.env.BACKEND_URI;
-const URL="http://localhost:3000"
+const URL = process.env.BACKEND_URI || "http://localhost:3000";
 
 export default function Room({
   name,
@@ -19,8 +31,16 @@ export default function Room({
 }) {
   const router = useRouter();
 
+  // meet-like states
+  const [showChat, setShowChat] = useState(false);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [mySocketId, setMySocketId] = useState<string | null>(null);
+
   const [lobby, setLobby] = useState(true);
   const [status, setStatus] = useState<string>("Waiting to connect you to someone…");
+
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
 
   // DOM refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -38,7 +58,6 @@ export default function Room({
 
   // --- Helpers --------------------------------------------------------------
 
-  // Bind/create remote stream to <video>/<audio>
   function ensureRemoteStream() {
     if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream();
 
@@ -58,33 +77,40 @@ export default function Room({
     }
   }
 
-  // Detach the preview element’s own stream (do NOT stop the prop tracks here)
   function detachLocalPreview() {
     try {
       const localStream = localVideoRef.current?.srcObject as MediaStream | null;
       localStream?.getTracks().forEach((t) => {
-        try { t.stop(); } catch {}
+        try {
+          t.stop();
+        } catch {}
       });
     } catch {}
     if (localVideoRef.current) {
-      try { localVideoRef.current.pause(); } catch {}
+      try {
+        localVideoRef.current.pause();
+      } catch {}
       localVideoRef.current.srcObject = null;
     }
   }
 
-  // Stop the tracks we were given from the parent — call ONLY on explicit Leave
   function stopProvidedTracks() {
-    try { localVideoTrack?.stop(); } catch {}
-    try { localAudioTrack?.stop(); } catch {}
+    try {
+      localVideoTrack?.stop();
+    } catch {}
+    try {
+      localAudioTrack?.stop();
+    } catch {}
   }
 
-  // Close PCs and clear ONLY remote media
   function teardownPeers(reason = "teardown") {
     try {
       if (sendingPcRef.current) {
         try {
           sendingPcRef.current.getSenders().forEach((sn) => {
-            try { sendingPcRef.current?.removeTrack(sn); } catch {}
+            try {
+              sendingPcRef.current?.removeTrack(sn);
+            } catch {}
           });
         } catch {}
         sendingPcRef.current.close();
@@ -92,7 +118,9 @@ export default function Room({
       if (receivingPcRef.current) {
         try {
           receivingPcRef.current.getSenders().forEach((sn) => {
-            try { receivingPcRef.current?.removeTrack(sn); } catch {}
+            try {
+              receivingPcRef.current?.removeTrack(sn);
+            } catch {}
           });
         } catch {}
         receivingPcRef.current.close();
@@ -102,12 +130,17 @@ export default function Room({
     receivingPcRef.current = null;
 
     if (remoteStreamRef.current) {
-      try { remoteStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+      try {
+        remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch {}
     }
     remoteStreamRef.current = null;
 
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+
+    // close chat drawer (Meet collapses panels when call flow changes)
+    setShowChat(false);
 
     setLobby(true);
     if (reason === "partner-left") {
@@ -118,6 +151,23 @@ export default function Room({
       setStatus("Waiting to connect you to someone…");
     }
   }
+
+  // mic/cam toggles (Meet-like)
+  const toggleMic = () => {
+    const on = !micOn;
+    setMicOn(on);
+    try {
+      if (localAudioTrack) localAudioTrack.enabled = on;
+    } catch {}
+  };
+
+  const toggleCam = () => {
+    const on = !camOn;
+    setCamOn(on);
+    try {
+      if (localVideoTrack) localVideoTrack.enabled = on;
+    } catch {}
+  };
 
   // --- Effects --------------------------------------------------------------
 
@@ -138,13 +188,16 @@ export default function Room({
     ]);
 
     el.srcObject = stream;
-    el.muted = true;      // required for autoplay policies
+    el.muted = true;
     el.playsInline = true;
 
     const tryPlay = () => el.play().catch(() => {});
     tryPlay();
 
-    const onceClick = () => { tryPlay(); window.removeEventListener("click", onceClick); };
+    const onceClick = () => {
+      tryPlay();
+      window.removeEventListener("click", onceClick);
+    };
     window.addEventListener("click", onceClick, { once: true });
 
     return () => window.removeEventListener("click", onceClick);
@@ -159,27 +212,28 @@ export default function Room({
       autoConnect: false,
       reconnection: true,
       reconnectionAttempts: 5,
+      auth: { name }, // server will see the display name
     });
 
     socketRef.current = s;
     s.connect();
 
     s.on("connect", () => {
+      setMySocketId(s.id ?? null);
       if (!joinedRef.current) {
-        // s.emit("join-room", { name });
         joinedRef.current = true;
       }
     });
 
     // ----- CALLER -----
-    s.on("send-offer", async ({ roomId }) => {
+    s.on("send-offer", async ({ roomId: rid }) => {
+      setRoomId(rid);        // <- capture room id for chat
       setLobby(false);
       setStatus("Connecting…");
 
       const pc = new RTCPeerConnection();
       sendingPcRef.current = pc;
 
-      // only add live tracks
       if (localVideoTrack && localVideoTrack.readyState === "live") pc.addTrack(localVideoTrack);
       if (localAudioTrack && localAudioTrack.readyState === "live") pc.addTrack(localAudioTrack);
 
@@ -190,7 +244,7 @@ export default function Room({
 
       pc.onicecandidate = (e) => {
         if (e.candidate) {
-          s.emit("add-ice-candidate", { candidate: e.candidate, type: "sender", roomId });
+          s.emit("add-ice-candidate", { candidate: e.candidate, type: "sender", roomId: rid });
         }
       };
 
@@ -199,11 +253,12 @@ export default function Room({
         offerToReceiveVideo: true,
       });
       await pc.setLocalDescription(offer);
-      s.emit("offer", { sdp: offer, roomId });
+      s.emit("offer", { sdp: offer, roomId: rid });
     });
 
     // ----- ANSWERER -----
-    s.on("offer", async ({ roomId, sdp: remoteSdp }) => {
+    s.on("offer", async ({ roomId: rid, sdp: remoteSdp }) => {
+      setRoomId(rid);        // <- capture room id for chat
       setLobby(false);
       setStatus("Connecting…");
 
@@ -222,13 +277,13 @@ export default function Room({
 
       pc.onicecandidate = (e) => {
         if (e.candidate) {
-          s.emit("add-ice-candidate", { candidate: e.candidate, type: "receiver", roomId });
+          s.emit("add-ice-candidate", { candidate: e.candidate, type: "receiver", roomId: rid });
         }
       };
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      s.emit("answer", { roomId, sdp: answer });
+      s.emit("answer", { roomId: rid, sdp: answer });
     });
 
     // caller receives answer
@@ -267,10 +322,10 @@ export default function Room({
       teardownPeers("partner-left");
     });
 
-    // ensure we leave queue and stop devices on real tab close
     const onBeforeUnload = () => {
-      try { s.emit("queue:leave"); } catch {}
-      // User is actually leaving the page: stop real devices
+      try {
+        s.emit("queue:leave");
+      } catch {}
       stopProvidedTracks();
       detachLocalPreview();
     };
@@ -287,26 +342,33 @@ export default function Room({
       s.off("lobby");
       s.off("queue:waiting");
       s.off("partner:left");
-      try { s.emit("queue:leave"); } catch {}
+      try {
+        s.emit("queue:leave");
+      } catch {}
       s.disconnect();
       socketRef.current = null;
 
-      // Close PCs & clear remote only; keep local devices alive in dev
-      try { sendingPcRef.current?.close(); } catch {}
-      try { receivingPcRef.current?.close(); } catch {}
+      try {
+        sendingPcRef.current?.close();
+      } catch {}
+      try {
+        receivingPcRef.current?.close();
+      } catch {}
       sendingPcRef.current = null;
       receivingPcRef.current = null;
 
       if (remoteStreamRef.current) {
-        try { remoteStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+        try {
+          remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+        } catch {}
       }
       remoteStreamRef.current = null;
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
       if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
 
-      // IMPORTANT: Do NOT stop the provided tracks here — Strict Mode double-mount would kill them.
-      // Only detach the preview element to avoid leaks.
       detachLocalPreview();
+      setRoomId(null);
+      setShowChat(false);
     };
   }, [name, localAudioTrack, localVideoTrack]);
 
@@ -316,14 +378,15 @@ export default function Room({
     const s = socketRef.current;
     if (!s) return;
     s.emit("queue:next");
-    teardownPeers("next"); // keep local devices alive for fast rematch
+    teardownPeers("next");
   };
 
   const handleLeave = () => {
     const s = socketRef.current;
-    try { s?.emit("queue:leave"); } catch {}
+    try {
+      s?.emit("queue:leave");
+    } catch {}
     teardownPeers("teardown");
-    // Explicit user intent to leave → actually turn off camera & mic
     stopProvidedTracks();
     detachLocalPreview();
     router.push("/");
@@ -337,102 +400,175 @@ export default function Room({
   // --- UI -------------------------------------------------------------------
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-950 text-white">
-      {/* Top bar */}
-      <header className="w-full border-b border-white/10 bg-gray-900/60 backdrop-blur sticky top-0 z-10">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+    <div className="relative flex min-h-screen flex-col bg-neutral-950 text-white">
+      {/* Top Bar (Meet-like slim header) */}
+      <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-neutral-900/60 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-[1400px] items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500" />
-            <h1 className="text-lg font-semibold tracking-tight">DevMatch Room</h1>
+            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-indigo-500 to-purple-500" />
+            <div className="leading-tight">
+              <div className="text-[13px] font-semibold">Meeting</div>
+              <div className="text-[11px] text-white/60">Room {roomId ?? "—"}</div>
+            </div>
           </div>
-          <div className="text-sm text-white/70">
-            Signed in as <span className="text-white">{name}</span>
+
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:block text-[12px] text-white/70">
+              {name ? (
+                <>Signed in as <span className="text-white">{name}</span></>
+              ) : (
+                <span className="text-white/60">Not signed in</span>
+              )}
+            </div>
+
+            {/* Chat toggle up top like Meet */}
+            <button
+              onClick={() => setShowChat((v) => !v)}
+              className={`ml-2 h-9 w-9 rounded-full border border-white/10 hover:bg-white/10 flex items-center justify-center transition ${
+                showChat ? "bg-indigo-600 hover:bg-indigo-500" : "bg-transparent"
+              }`}
+              title={showChat ? "Close chat" : "Open chat"}
+            >
+              <MessageSquareText className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Video grid */}
-      <main className="flex-1">
-        <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Local video */}
-          <div className="rounded-2xl overflow-hidden border border-white/10 bg-white/[0.02] shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
-            <div className="p-3 flex items-center justify-between border-b border-white/10">
-              <div className="text-sm font-medium text-white/80">You</div>
-              <div className="text-[10px] uppercase tracking-wider text-white/50">Local Preview</div>
-            </div>
-            <div className="relative aspect-video bg-black">
+      {/* Stage (single remote with PiP self-view) */}
+      <main className="relative flex-1">
+        <div className="relative mx-auto max-w-[1400px] px-4 pt-4 pb-28">
+          <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
+            {/* Remote video or lobby */}
+            {lobby ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="h-10 w-10 animate-spin text-white/70" />
+                <span className="text-sm text-white/70">{status}</span>
+              </div>
+            ) : (
               <video
-                ref={localVideoRef}
+                ref={remoteVideoRef}
                 autoPlay
                 playsInline
                 className="absolute inset-0 h-full w-full object-cover"
               />
-              <div className="absolute bottom-3 left-3 text-xs bg-black/60 px-2 py-1 rounded-md">
-                {name}
-              </div>
-            </div>
-          </div>
+            )}
 
-          {/* Remote video */}
-          <div className="rounded-2xl overflow-hidden border border-white/10 bg-white/[0.02] shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
-            <div className="p-3 flex items-center justify-between border-b border-white/10">
-              <div className="text-sm font-medium text-white/80">Peer</div>
-              <div className="text-[10px] uppercase tracking-wider text-white/50">Remote Stream</div>
+            {/* Remote label */}
+            <div className="absolute bottom-3 left-3 rounded-md bg-black/60 px-2 py-1 text-xs">
+              {lobby ? "—" : "Peer"}
             </div>
-            <div className="relative aspect-video bg-black flex items-center justify-center">
-              {lobby ? (
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-white/60" />
-                  <span className="text-sm text-white/60">{status}</span>
-                </div>
-              ) : (
+
+            {/* Hidden remote audio */}
+            <audio ref={remoteAudioRef} style={{ display: "none" }} />
+
+            {/* Local PiP (bottom-right like Meet) */}
+            <div className="pointer-events-auto absolute bottom-4 right-4 w-44 sm:w-56 md:w-64">
+              <div className="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
                 <video
-                  ref={remoteVideoRef}
+                  ref={localVideoRef}
                   autoPlay
                   playsInline
                   className="absolute inset-0 h-full w-full object-cover"
                 />
-              )}
-              <div className="absolute bottom-3 left-3 text-xs bg-black/60 px-2 py-1 rounded-md">
-                {lobby ? "—" : "Connected"}
+                {!camOn && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-xs text-white/70">
+                    Camera off
+                  </div>
+                )}
+                <div className="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px]">
+                  {name || "You"}
+                </div>
               </div>
-              {/* hidden remote audio sink so we can hear the peer */}
-              <audio ref={remoteAudioRef} style={{ display: "none" }} />
             </div>
           </div>
         </div>
-      </main>
 
-      {/* Footer */}
-      <footer className="w-full border-t border-white/10 bg-gray-900/60 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 py-4 flex items-center gap-3 justify-end">
-          <span className="mr-auto text-xs text-white/60">
-            Tip: keep this tab active while matching.
-          </span>
+        {/* Bottom floating controls (centered pill) */}
+        <div className="pointer-events-none fixed bottom-6 left-0 right-0 z-50 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-2 py-1.5 backdrop-blur">
+            {/* Recheck */}
+            <button
+              onClick={handleRecheck}
+              className="h-11 w-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+              title="Recheck"
+            >
+              <RefreshCw className="h-5 w-5" />
+            </button>
 
-          <button
-            className="h-10 rounded-xl border border-white/15 bg-white/[0.04] px-4 text-sm hover:bg-white/[0.08] transition"
-            onClick={handleRecheck}
-          >
-            Recheck
-          </button>
+            {/* Mic */}
+            <button
+              onClick={toggleMic}
+              className={`h-11 w-11 rounded-full flex items-center justify-center transition ${
+                micOn ? "bg-white/10 hover:bg-white/20" : "bg-red-600 hover:bg-red-500"
+              }`}
+              title={micOn ? "Turn off microphone" : "Turn on microphone"}
+            >
+              {micOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+            </button>
 
-          <button
-            className="h-10 rounded-xl border border-white/15 bg-white/[0.04] px-4 text-sm hover:bg-white/[0.08] transition"
-            onClick={handleNext}
-            title="Skip current partner and find another"
-          >
-            Next
-          </button>
+            {/* Cam */}
+            <button
+              onClick={toggleCam}
+              className={`h-11 w-11 rounded-full flex items-center justify-center transition ${
+                camOn ? "bg-white/10 hover:bg-white/20" : "bg-red-600 hover:bg-red-500"
+              }`}
+              title={camOn ? "Turn off camera" : "Turn on camera"}
+            >
+              {camOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+            </button>
 
-          <button
-            className="h-10 rounded-xl bg-red-600 hover:bg-red-500 px-4 text-sm font-medium transition"
-            onClick={handleLeave}
-          >
-            Leave
-          </button>
+            {/* Next (skip) */}
+            <button
+              onClick={handleNext}
+              className="h-11 w-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+              title="Next match"
+            >
+              <SkipForward className="h-5 w-5" />
+            </button>
+
+            {/* Leave (center, red) */}
+            <button
+              onClick={handleLeave}
+              className="ml-1 mr-1 h-11 rounded-full bg-red-600 px-6 hover:bg-red-500 flex items-center justify-center gap-2"
+              title="Leave call"
+            >
+              <PhoneOff className="h-5 w-5" />
+              <span className="hidden sm:inline text-sm font-medium">Leave</span>
+            </button>
+          </div>
         </div>
-      </footer>
+
+        {/* Chat Drawer (right panel like Meet) */}
+        <div
+          className={`fixed top-14 right-0 z-40 h-[calc(100vh-56px)] w-full sm:w-[360px] md:w-[420px] lg:w-[460px] transform border-l border-white/10 bg-neutral-900/95 backdrop-blur transition-transform duration-300 ${
+            showChat ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+          {/* Drawer header */}
+          <div className="flex h-12 items-center justify-between border-b border-white/10 px-3">
+            <div className="text-sm font-medium text-white/80">In-call messages</div>
+            <button
+              onClick={() => setShowChat(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/10"
+              title="Close chat"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Chat content */}
+          <div className="h-[calc(100%-48px)]">
+            <ChatPanel
+              socket={socketRef.current}
+              roomId={roomId}
+              name={name}
+              mySocketId={mySocketId}
+              collapsed={false}
+            />
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

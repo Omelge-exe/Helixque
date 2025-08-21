@@ -9,12 +9,16 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
+    "@clerk/express": "^1.7.22",
     "@socket.io/redis-adapter": "^8.3.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
     "express": "^4.19.2",
     "ioredis": "^5.4.1",
+    "mongoose": "^8.17.2",
     "socket.io": "^4.8.1",
-    "socket.io-adapter": "^2.5.5"
+    "socket.io-adapter": "^2.5.5",
+    "zod": "^4.0.17"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

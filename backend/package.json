@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "type": "module",
- "scripts": {
-  "build": "tsc -p tsconfig.json",
-  "start": "node dist/index.js",
-  "dev": "tsx src/index.ts"
-},
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
   "dependencies": {
     "@clerk/express": "^1.7.22",
     "@socket.io/redis-adapter": "^8.3.0",
@@ -16,6 +16,7 @@
     "express": "^4.19.2",
     "ioredis": "^5.4.1",
     "mongoose": "^8.17.2",
+    "peer": "^1.0.2",
     "socket.io": "^4.8.1",
     "socket.io-adapter": "^2.5.5",
     "zod": "^4.0.17"

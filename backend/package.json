@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "type": "module",
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
-  },
+ "scripts": {
+  "build": "tsc -p tsconfig.json",
+  "start": "node dist/index.js",
+  "dev": "tsx src/index.ts"
+},
   "dependencies": {
     "@clerk/express": "^1.7.22",
     "@socket.io/redis-adapter": "^8.3.0",

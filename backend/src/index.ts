@@ -38,8 +38,8 @@ io.on("connection", (socket: Socket) => {
   // Derive meta
   const meta = {
     name: (socket.handshake.auth?.name as string) || "guest",
-    ip: socket.handshake.address || null,
-    ua: socket.handshake.headers["user-agent"] || null,
+    ip: (socket.handshake.address as string) || null,
+    ua: (socket.handshake.headers["user-agent"] as string) || null,
   };
 
   // Presence (disabled Redis for now)
@@ -64,17 +64,51 @@ io.on("connection", (socket: Socket) => {
   if (initialRoomId) {
     joinChatRoom(socket, initialRoomId, meta.name);
     userManager.setRoom(socket.id, initialRoomId);
+    socket.join(initialRoomId); // <-- so socket.to(roomId) works
   }
 
   // ⬇️ Keep UserManager in sync when client explicitly joins later
   socket.on("chat:join", ({ roomId }: { roomId: string; name?: string }) => {
     if (roomId) userManager.setRoom(socket.id, roomId);
+    if (roomId) socket.join(roomId);
+  });
+
+  // Screen share state (unchanged)
+  socket.on("screen:state", ({ roomId, on }) => {
+    socket.to(roomId).emit("screen:state", { on });
+  });
+
+  // --- Media state (aggregated) ---
+  socket.on("media:state", ({ roomId, state }: { roomId: string; state: { micOn?: boolean; camOn?: boolean } }) => {
+    socket.to(roomId).emit("peer:media-state", { state });
+  });
+
+  // Legacy single toggles (optional; still supported)
+  socket.on("media:cam", ({ roomId, on }) => {
+    socket.to(roomId).emit("media:cam", { on });
+  });
+  socket.on("media:mic", ({ roomId, on }) => {
+    socket.to(roomId).emit("media:mic", { on });
+  });
+
+  // (Optional) Back-compat aliases if you ever used these names:
+  socket.on("state:update", ({ roomId, micOn, camOn }) => {
+    socket.to(roomId).emit("peer:state", { micOn, camOn });
+  });
+
+  // Renegotiation passthrough (your existing)
+  socket.on("renegotiate-offer", ({ roomId, sdp, role }) => {
+    socket.to(roomId).emit("renegotiate-offer", { sdp, role });
+  });
+
+  socket.on("renegotiate-answer", ({ roomId, sdp, role }) => {
+    socket.to(roomId).emit("renegotiate-answer", { sdp, role });
   });
 
   socket.on("disconnect", (reason) => {
     console.log(`[io] disconnected ${socket.id} (${reason})`);
 
-    clearInterval(heartbeats.get(socket.id));
+    clearInterval(heartbeats.get(socket.id)!);
     heartbeats.delete(socket.id);
 
     // presence down (disabled Redis)
@@ -95,5 +129,5 @@ io.on("connection", (socket: Socket) => {
   socket.on("error", (err) => console.warn(`[io] socket error ${socket.id}:`, err));
 });
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 5001);
 server.listen(PORT, () => console.log(`listening on *:${PORT}`));

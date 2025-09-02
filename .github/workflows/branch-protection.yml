@@ -1,0 +1,28 @@
+name: Apply Branch Protection
+
+on:
+  workflow_dispatch:    # allows manual triggering
+  repository_dispatch:  # allows triggering via event
+
+jobs:
+  branch-protection:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get repository name
+        run: |
+          echo "REPO_NAME=${{ github.event.repository.name || github.repository }}" >> $GITHUB_ENV
+
+      - name: Fetch branch protection JSON
+        id: fetch_json
+        run: |
+          echo "${{ secrets.BRANCH_PROTECTION_RULES }}" > rules.json
+
+      - name: Apply branch protection rules
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.PAT_GITHUB }}
+          repository: ${{ env.REPO_NAME }}
+          event-type: apply-branch-protection
+          client-payload: |
+            $(cat rules.json)

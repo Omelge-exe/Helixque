@@ -1,3 +1,4 @@
+# .github/workflows/reviewdog-eslint.yml
 name: ESLint (reviewdog)
 
 on:
@@ -11,17 +12,26 @@ permissions:
 jobs:
   eslint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: my-app       # run npm/eslint from my-app
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          # lockfile path is NOT at root; point to my-app
+          cache-dependency-path: my-app/package-lock.json
+
       - run: npm ci
+
       - name: Run ESLint via reviewdog (Checks)
-        uses: reviewdog/action-eslint@2fee6dd72a5419ff4113f694e2068d2a03bb35dd # v1.33.2
+        uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-check   # inline annotations in Checks tab
-          level: warning              # or 'error'
+          reporter: github-pr-check     # inline annotations in Checks
+          level: warning
+          workdir: my-app               # run eslint inside my-app
           eslint_flags: .

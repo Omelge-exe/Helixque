@@ -1,3 +1,5 @@
+// this is the device check code
+
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Room from "./Room";

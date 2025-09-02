@@ -1,23 +1,29 @@
-name: Auto Comment on PR
+name: PR Auto-Comment
 
 on:
-  workflow_call:
-    inputs:
-      pr-user:
-        required: true
-        type: string
-    secrets:
-      custom-token: # The secret name in the reusable workflow
-        required: true
+  pull_request:
+    types: [opened, reopened, synchronize]
 
 jobs:
-  add-comment:
+  comment:
     runs-on: ubuntu-latest
     steps:
-      - name: Add a welcoming comment
-        uses: thollander/actions-comment-pull-request@v2
+      # Step 1: Checkout the PR repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Node.js (if using JS script for commenting)
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
         with:
-          message: |
-            👋 Hi @${{ inputs.pr-user }}!
-            Thanks for opening this pull request. We will review it shortly.
-          github-token: ${{ secrets.custom-token }} # Reference the secret
+          node-version: '20'
+
+      # Step 3: Comment on the PR using GitHub CLI
+      - name: Comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+          gh auth setup-git
+          gh pr comment $PR_NUMBER --repo $REPO --body "👋 Thanks for your PR! Our bot will review it shortly."

@@ -6,7 +6,7 @@ on:
 
 jobs:
   call-comment-bot:
-    uses: Omelge-exe/.github/workflows/pr-comment-bot.yml@main
+    uses: ./.github/workflows/pr-comment-bot.yml@main
     with:
       pr-user: ${{ github.event.pull_request.user.login }}
     secrets:

@@ -1,13 +1,23 @@
-name: Call PR Comment Bot
+name: Auto Comment on PR
 
 on:
-  pull_request:
-    types: [opened, reopened]
+  workflow_call:
+    inputs:
+      pr-user:
+        required: true
+        type: string
+    secrets:
+      custom-token: # The secret name in the reusable workflow
+        required: true
 
 jobs:
-  call-comment-bot:
-    uses: ./.github/workflows/pr-comment-bot.yml@main
-    with:
-      pr-user: ${{ github.event.pull_request.user.login }}
-    secrets:
-      github-token: ${{ secrets.GITHUB_TOKEN }}
+  add-comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add a welcoming comment
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          message: |
+            👋 Hi @${{ inputs.pr-user }}!
+            Thanks for opening this pull request. We will review it shortly.
+          github-token: ${{ secrets.custom-token }} # Reference the secret

@@ -8,22 +8,9 @@ jobs:
   comment:
     runs-on: ubuntu-latest
     steps:
-      # Step 1: Checkout the PR repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # Step 2: Set up Node.js (if using JS script for commenting)
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      # Step 3: Comment on the PR using GitHub CLI
       - name: Comment on PR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          REPO=${{ github.repository }}
-          gh auth setup-git
-          gh pr comment $PR_NUMBER --repo $REPO --body "👋 Thanks for your PR! Our bot will review it shortly."
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: "👋 Thanks for your PR! Our bot will review it shortly."

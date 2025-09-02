@@ -1,6 +1,7 @@
 name: PR Auto-Comment
-
 on:
+  pull_request:
+    types: [opened, reopened, synchronize]
   pull_request_target:
     types: [opened, reopened, synchronize]
 
@@ -10,10 +11,17 @@ permissions:
 
 jobs:
   comment:
+    # Same-repo PRs → run on pull_request
+    # Fork PRs → run on pull_request_target
+    if: >
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+      || 
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     steps:
-      - name: Comment on PR
-        uses: peter-evans/create-or-update-comment@v4
+      - uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.pull_request.number }}

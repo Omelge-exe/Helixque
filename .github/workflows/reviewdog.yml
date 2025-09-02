@@ -1,4 +1,5 @@
 name: reviewdog
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -7,16 +8,37 @@ jobs:
   lint-and-reviewdog:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    # Set up reviewdog
-    - uses: reviewdog/action-setup@v1
-      with:
-        reviewdog_version: latest
+      # Set up Node.js for ESLint (if needed)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'  # adjust as needed
 
-    # Run your linter and report results
-    - name: Run golint with reviewdog
-      run: |
-        golint ./... | reviewdog -f=golint -reporter=github-pr-review
-      env:
-        REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Install dependencies for ESLint
+      - name: Install dependencies
+        run: npm ci
+        # If you use yarn: run: yarn install
+
+      # Set up reviewdog
+      - uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: latest
+
+      # Run ESLint with reviewdog (for JS/TS projects)
+      - name: Run ESLint with reviewdog
+        run: |
+          npx eslint . --format unix | reviewdog -f=eslint -reporter=github-pr-review
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Run golint with reviewdog (for Go projects)
+      - name: Install golint
+        run: go install golang.org/x/lint/golint@latest
+
+      - name: Run golint with reviewdog
+        run: |
+          golint ./... | reviewdog -f=golint -reporter=github-pr-review
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}

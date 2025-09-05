@@ -1,14 +1,15 @@
 # Helixque
 
-A real-time video chat application that connects strangers for random conversations, similar to Omegle. Built with modern web technologies for seamless peer-to-peer communication.
+A professional real-time video chat application that connects people based on your preferences. Built with modern web technologies for seamless peer-to-peer communication and professional networking.
 
 ## ✨ Features
 
-- **Random Video Chat**: Connect with strangers worldwide through video and audio
-- **Next/Skip Functionality**: Skip to the next person if the conversation isn't going well
+- **Professional Video Chat**: Connect with people worldwide based on your preferences through video and audio
+- **Smart Matching**: Advanced matching system to connect you with relevant people
+- **Next/Skip Functionality**: Skip to the next person if the conversation isn't a good fit
 - **Device Management**: Easy camera and microphone controls
-- **Real-time Matching**: Instant pairing with available users
-- **Ban System**: Prevents rematching with previously encountered users
+- **Real-time Communication**: Instant pairing with available users
+- **Preference-based Connections**: Connect with people who match your interests and criteria
 - **Responsive Design**: Works across desktop and mobile devices
 - **WebRTC Technology**: Direct peer-to-peer connections for optimal performance
 
@@ -161,11 +162,11 @@ Helixque/
 ## 🧩 Core Components
 
 ### UserManager
-Handles user lifecycle, matching logic, and queue management:
-- **Queue Management**: Maintains waiting users for matching
-- **Ban System**: Prevents rematching with previous partners
+Handles user lifecycle, preference-based matching logic, and connection management:
+- **Smart Matching**: Maintains preference-based matching system for connecting relevant users
+- **Connection Management**: Prevents unwanted reconnections and manages user preferences
 - **Connection Tracking**: Monitors online/offline status
-- **Partner Linking**: Manages current conversation pairs
+- **Professional Networking**: Manages current conversation pairs based on user criteria
 
 ### RoomManager  
 Manages chat rooms and WebRTC signaling:
@@ -183,18 +184,18 @@ Frontend video chat interface:
 ## 🎯 Usage
 
 1. **Join**: Visit the application and allow camera/microphone access
-2. **Setup**: Configure your video/audio preferences
-3. **Match**: Get automatically paired with another online user
-4. **Chat**: Enjoy real-time video conversation
+2. **Setup**: Configure your video/audio preferences and connection criteria
+3. **Connect**: Get automatically paired with another user based on your preferences
+4. **Chat**: Enjoy real-time professional video conversation
 5. **Next**: Click "Next" to find a new conversation partner
 6. **Leave**: Click "Leave" to exit the application
 
 ## 🔒 Privacy & Security
 
-- **No Data Storage**: Conversations are not recorded or stored
-- **Peer-to-Peer**: Video/audio streams directly between users
+- **No Data Storage**: Conversations are private and not recorded or stored
+- **Peer-to-Peer**: Video/audio streams directly between users for maximum privacy
 - **Temporary Rooms**: Chat rooms are destroyed when users disconnect
-- **Ban System**: Prevents harassment through rematching prevention
+- **Preference Management**: Your connection preferences are kept secure and private
 
 ## 🚀 Deployment
 
@@ -253,7 +254,7 @@ npm test
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 

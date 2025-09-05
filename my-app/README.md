@@ -1,6 +1,6 @@
 # Helixque Frontend
 
-This is the frontend for Helixque, a real-time video chat application built with [Next.js](https://nextjs.org).
+This is the frontend for Helixque, a professional real-time video chat application that connects people based on preferences, built with [Next.js](https://nextjs.org).
 
 ## Getting Started
 
@@ -19,11 +19,11 @@ Open [http://localhost:3000](http://localhost:3000) (or the next available port)
 ## Key Components
 
 - `app/page.tsx` - Landing page
-- `app/match/page.tsx` - Device setup and user matching
+- `app/match/page.tsx` - Device setup and preference-based user matching
 - `components/RTC/DeviceCheck.tsx` - Camera/microphone setup interface
-- `components/RTC/Room.tsx` - Main video chat room component
+- `components/RTC/Room.tsx` - Main professional video chat room component
 
-This project uses WebRTC for peer-to-peer video communication and Socket.IO for real-time signaling.
+This project uses WebRTC for peer-to-peer video communication and Socket.IO for real-time signaling, enabling professional networking through video conversations.
 
 ## Learn More
 

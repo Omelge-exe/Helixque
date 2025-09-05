@@ -1,24 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Helixque Frontend
+
+This is the frontend for Helixque, a real-time video chat application built with [Next.js](https://nextjs.org).
 
 ## Getting Started
 
-First, run the development server:
+Make sure the backend server is running first (see main README for backend setup).
+
+Then, run the frontend development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) (or the next available port) with your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Important**: You'll need to allow camera and microphone permissions for the application to work properly.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Key Components
+
+- `app/page.tsx` - Landing page
+- `app/match/page.tsx` - Device setup and user matching
+- `components/RTC/DeviceCheck.tsx` - Camera/microphone setup interface
+- `components/RTC/Room.tsx` - Main video chat room component
+
+This project uses WebRTC for peer-to-peer video communication and Socket.IO for real-time signaling.
 
 ## Learn More
 
